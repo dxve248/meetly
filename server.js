@@ -54,6 +54,10 @@ io.on('connection', (socket) => {
     if (socket.data.roomId && to) io.to(to).emit('signal', { from: socket.id, data });
   });
 
+  socket.on('peer-state', ({ to, data }) => {
+    if (socket.data.roomId && to) io.to(to).emit('peer-state', { from: socket.id, data });
+  });
+
   socket.on('chat', ({ to, text }) => {
     if (!socket.data.roomId || !to) return;
     const name = socket.data.username || 'Guest';
@@ -79,5 +83,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Video call server running on http://localhost:${PORT}`);
+  console.log(`Meetly server running on http://localhost:${PORT}`);
 });

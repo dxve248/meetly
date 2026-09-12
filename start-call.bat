@@ -1,5 +1,5 @@
 @echo off
-title VideoCall
+title Meetly
 cd /d "%~dp0"
 
 where node >nul 2>nul
@@ -23,7 +23,7 @@ if not exist node_modules (
 )
 
 echo.
-echo Starting VideoCall server...
+echo Starting Meetly server...
 echo The browser will open in a moment. Close this window to stop the server.
 echo.
 

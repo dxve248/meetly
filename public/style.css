@@ -244,6 +244,44 @@ input:focus {
   background: rgba(0, 0, 0, .35);
 }
 
+.badges {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  max-width: 75%;
+  z-index: 3;
+}
+
+.badges.local {
+  top: 8px;
+  left: 8px;
+}
+
+.chip {
+  background: rgba(0, 0, 0, .55);
+  color: #fff;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  backdrop-filter: blur(4px);
+  white-space: nowrap;
+}
+
+.chip.name {
+  font-weight: 600;
+}
+
+.chip.warn {
+  background: rgba(229, 72, 77, .85);
+}
+
+.chip.info {
+  background: rgba(79, 140, 255, .85);
+}
+
 .controls {
   display: flex;
   justify-content: center;
@@ -271,6 +309,15 @@ input:focus {
 
 .ctrl:hover {
   border-color: var(--muted);
+}
+
+.ctrl:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.ctrl:disabled:hover {
+  border-color: var(--border);
 }
 
 .ctrl .icon {
@@ -390,12 +437,23 @@ input:focus {
   border-color: rgba(79, 140, 255, .45);
 }
 
+.msg .msg-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .msg .name {
-  display: block;
   font-size: 12px;
   font-weight: 700;
   color: var(--accent);
   margin-bottom: 2px;
+}
+
+.msg .time {
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .msg .text {

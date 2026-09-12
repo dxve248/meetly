@@ -19,12 +19,17 @@ const els = {
   link: $('link'),
   copyBtn: $('copy-btn'),
   status: $('status'),
-  fullMsg: $('full-msg'),
   toast: $('toast'),
   remoteVideo: $('remote-video'),
   remotePlaceholder: $('remote-placeholder'),
+  remoteName: $('remote-name'),
+  remoteMic: $('remote-mic'),
+  remoteCam: $('remote-cam'),
+  remoteScreen: $('remote-screen'),
   localVideo: $('local-video'),
   localPlaceholder: $('local-placeholder'),
+  localName: $('local-name'),
+  localScreen: $('local-screen'),
   micBtn: $('mic-btn'),
   micLabel: $('mic-label'),
   camBtn: $('cam-btn'),
@@ -44,6 +49,10 @@ let localStream = null;
 let displayStream = null;
 let pc = null;
 let peerId = null;
+let peerName = '';
+let myMicOn = true;
+let myVideoState = 'on'; // 'on' | 'off' | 'screen'
+let rejoinTimer = null;
 
 const rtcConfig = {
   iceServers: [
@@ -81,10 +90,21 @@ function init() {
   socket.on('joined', onJoined);
   socket.on('user-joined', onUserJoined);
   socket.on('signal', onSignal);
+  socket.on('peer-state', onPeerState);
   socket.on('chat', onChat);
   socket.on('user-left', onUserLeft);
-  socket.on('room-full', () => toast('This meeting link is full. Only 2 people can join.'));
+  socket.on('room-full', onRoomFull);
   socket.on('error-msg', ({ message }) => toast(message));
+  socket.on('connect', onSocketReconnect);
+}
+
+function onSocketReconnect() {
+  // After a network blip or server restart the socket gets a new id and the
+  // server room state is gone. If we were mid-call, rebuild it.
+  if (els.call.hidden || !roomId) return;
+  if (pc) tearDownPeer();
+  setStatus('Reconnecting\u2026');
+  socket.emit('join-room', { roomId, username });
 }
 
 function showLobby() {
@@ -98,19 +118,26 @@ async function joinCall() {
   username = els.nameInput.value.trim() || username;
   localStorage.setItem('vc-name', username);
 
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: true,
-    });
-  } catch (err) {
-    toast('Camera or microphone access was blocked. Allow access and try again.');
+  localStream = await acquireMedia();
+  if (!localStream) {
+    toast('Microphone access was blocked. Allow access and try again.');
     return;
   }
 
   els.localVideo.srcObject = localStream;
+  els.localName.textContent = username;
   els.lobby.hidden = true;
   els.call.hidden = false;
+
+  if (!localStream.getVideoTracks()[0]) {
+    myVideoState = 'off';
+    els.localPlaceholder.hidden = false;
+    els.localPlaceholder.textContent = 'No camera';
+    els.camBtn.disabled = true;
+    els.camBtn.classList.add('off');
+    els.camLabel.textContent = 'No camera';
+    els.screenBtn.disabled = true;
+  }
 
   const fullLink = url.origin + url.pathname + '?room=' + encodeURIComponent(roomId);
   els.link.textContent = fullLink;
@@ -119,24 +146,69 @@ async function joinCall() {
   socket.emit('join-room', { roomId, username });
 }
 
+async function acquireMedia() {
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: true,
+    });
+  } catch (err) {
+    // Camera missing or blocked: retry with audio only.
+    try {
+      return await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err2) {
+      return null;
+    }
+  }
+}
+
 function onJoined({ users, isInitiator }) {
+  clearRejoin();
   const peer = users.find((u) => u.id !== socket.id);
   if (peer) {
     peerId = peer.id;
+    peerName = peer.name;
+    els.remoteName.textContent = peerName;
+    sendPeerState();
     if (isInitiator) startCall();
   } else {
     setStatus('Waiting for the other person to join with the link\u2026');
   }
 }
 
-function onUserJoined({ userId }) {
+function onUserJoined({ userId, username: name }) {
   peerId = userId;
-  setStatus('Connecting\u2026');
+  peerName = name || 'Guest';
+  els.remoteName.textContent = peerName;
+  sendPeerState();
+  showConnecting();
+}
+
+function onRoomFull() {
+  setStatus('Meeting is full \u2014 waiting for a spot\u2026');
+  els.remotePlaceholder.hidden = false;
+  els.remotePlaceholder.textContent = 'This meeting is full (2 people max). Waiting for a spot\u2026';
+  startRejoin();
+}
+
+function startRejoin() {
+  if (rejoinTimer) return;
+  rejoinTimer = setInterval(() => {
+    socket.emit('join-room', { roomId, username });
+  }, 2500);
+}
+
+function clearRejoin() {
+  if (rejoinTimer) {
+    clearInterval(rejoinTimer);
+    rejoinTimer = null;
+  }
 }
 
 function startCall() {
+  if (pc) return;
   pc = createPeer();
-  setStatus('Connecting\u2026');
+  showConnecting();
   pc.createOffer()
     .then((offer) => pc.setLocalDescription(offer))
     .then(() => sendSignal({ type: 'offer', sdp: pc.localDescription }))
@@ -152,14 +224,16 @@ function createPeer() {
   };
 
   p.ontrack = (e) => {
-    els.remoteVideo.srcObject = e.streams[0];
-    els.remotePlaceholder.hidden = true;
+    if (e.streams[0]) els.remoteVideo.srcObject = e.streams[0];
+    if (!els.remoteVideo.hidden) els.remotePlaceholder.hidden = true;
   };
 
   p.onconnectionstatechange = () => {
-    if (p.connectionState === 'connected') setStatus('');
-    else if (p.connectionState === 'failed') setStatus('Connection failed');
-    else if (p.connectionState === 'disconnected') setStatus('Reconnecting\u2026');
+    const s = p.connectionState;
+    if (s === 'connected') setStatus('');
+    else if (s === 'failed') setStatus('Connection failed');
+    else if (s === 'disconnected') setStatus('Reconnecting\u2026');
+    else if (s === 'connecting') showConnecting();
   };
 
   return p;
@@ -167,23 +241,36 @@ function createPeer() {
 
 async function onSignal({ from, data }) {
   if (from !== peerId) return;
-
-  if (data.type === 'offer') {
-    if (!pc) pc = createPeer();
-    await pc.setRemoteDescription(data.sdp);
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    sendSignal({ type: 'answer', sdp: pc.localDescription });
-  } else if (data.type === 'answer') {
-    await pc.setRemoteDescription(data.sdp);
-  } else if (data.type === 'candidate') {
-    if (pc && pc.remoteDescription) await pc.addIceCandidate(data.candidate);
+  try {
+    if (data.type === 'offer') {
+      if (!pc) pc = createPeer();
+      await pc.setRemoteDescription(data.sdp);
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      sendSignal({ type: 'answer', sdp: pc.localDescription });
+      sendPeerState();
+    } else if (data.type === 'answer') {
+      await pc.setRemoteDescription(data.sdp);
+      sendPeerState();
+    } else if (data.type === 'candidate') {
+      if (pc && pc.remoteDescription) await pc.addIceCandidate(data.candidate);
+    }
+  } catch (err) {
+    // Ignore races (e.g. the peer left mid-negotiation).
   }
 }
 
 function sendSignal(data) {
   if (!peerId) return;
   socket.emit('signal', { to: peerId, data });
+}
+
+function showConnecting() {
+  setStatus('Connecting\u2026');
+  if (!els.remoteVideo.hidden) {
+    els.remotePlaceholder.hidden = false;
+    els.remotePlaceholder.textContent = 'Connecting\u2026';
+  }
 }
 
 function onUserLeft() {
@@ -195,19 +282,26 @@ function tearDownPeer() {
   if (pc) { pc.close(); pc = null; }
   stopScreenShare();
   peerId = null;
+  peerName = '';
   els.remoteVideo.srcObject = null;
+  els.remoteVideo.hidden = false;
   els.remotePlaceholder.hidden = false;
   els.remotePlaceholder.textContent = 'Waiting for the other person to join with the link\u2026';
-  els.localVideo.hidden = false;
+  els.remoteName.textContent = '';
+  els.remoteMic.hidden = true;
+  els.remoteCam.hidden = true;
+  els.remoteScreen.hidden = true;
 }
 
 function toggleMic() {
   if (!localStream) return;
   const track = localStream.getAudioTracks()[0];
   if (!track) return;
-  track.enabled = !track.enabled;
-  els.micBtn.classList.toggle('off', !track.enabled);
-  els.micLabel.textContent = track.enabled ? 'Mute' : 'Unmute';
+  myMicOn = !track.enabled;
+  track.enabled = myMicOn;
+  els.micBtn.classList.toggle('off', !myMicOn);
+  els.micLabel.textContent = myMicOn ? 'Mute' : 'Unmute';
+  sendPeerState();
 }
 
 function toggleCam() {
@@ -218,10 +312,21 @@ function toggleCam() {
   els.camBtn.classList.toggle('off', !track.enabled);
   els.camLabel.textContent = track.enabled ? 'Camera' : 'Camera on';
   els.localPlaceholder.hidden = track.enabled;
+  if (myVideoState === 'screen') return; // camera isn't transmitted while sharing
+  myVideoState = track.enabled ? 'on' : 'off';
+  sendPeerState();
 }
 
 async function toggleScreen() {
-  const sender = pc && pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+  if (!pc) {
+    toast('Wait until the other person joins before sharing your screen.');
+    return;
+  }
+  const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+  if (!sender) {
+    toast('No video track is available to share.');
+    return;
+  }
 
   if (displayStream) {
     stopScreenShare();
@@ -232,9 +337,12 @@ async function toggleScreen() {
     displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
     const screenTrack = displayStream.getVideoTracks()[0];
     screenTrack.onended = stopScreenShare;
-    if (sender) await sender.replaceTrack(screenTrack);
+    await sender.replaceTrack(screenTrack);
+    myVideoState = 'screen';
     els.screenBtn.classList.add('active');
     els.screenLabel.textContent = 'Stop sharing';
+    els.localScreen.hidden = false;
+    sendPeerState();
   } catch (err) {
     toast('Screen sharing was cancelled or unavailable.');
   }
@@ -246,10 +354,46 @@ function stopScreenShare() {
     displayStream = null;
     const sender = pc && pc.getSenders().find((s) => s.track && s.track.kind === 'video');
     const camTrack = localStream && localStream.getVideoTracks()[0];
-    if (sender && camTrack) sender.replaceTrack(camTrack);
+    if (sender) {
+      if (camTrack) sender.replaceTrack(camTrack).catch(() => {});
+      else sender.replaceTrack(null).catch(() => {});
+    }
+  }
+  if (myVideoState === 'screen') {
+    myVideoState = localStream && localStream.getVideoTracks()[0] ? 'on' : 'off';
   }
   els.screenBtn.classList.remove('active');
   els.screenLabel.textContent = 'Share screen';
+  els.localScreen.hidden = true;
+  sendPeerState();
+}
+
+function myState() {
+  return { audio: myMicOn, video: myVideoState, name: username };
+}
+
+function sendPeerState() {
+  if (!peerId) return;
+  socket.emit('peer-state', { to: peerId, data: myState() });
+}
+
+function onPeerState({ from, data }) {
+  if (from !== peerId) return;
+  const name = data.name || peerName || 'Guest';
+  els.remoteName.textContent = name;
+  els.remoteMic.hidden = !!data.audio;
+  if (data.video === 'off') {
+    els.remoteVideo.hidden = true;
+    els.remotePlaceholder.hidden = false;
+    els.remotePlaceholder.textContent = name + "'s camera is off";
+    els.remoteCam.hidden = false;
+    els.remoteScreen.hidden = true;
+  } else {
+    els.remoteVideo.hidden = false;
+    els.remoteCam.hidden = true;
+    els.remoteScreen.hidden = data.video !== 'screen';
+    if (pc && pc.connectionState === 'connected') els.remotePlaceholder.hidden = true;
+  }
 }
 
 function sendChat() {
@@ -261,42 +405,78 @@ function sendChat() {
   els.chatWelcome.hidden = true;
 }
 
-function onChat({ fromName, text }) {
-  addChatMessage(fromName, text, false);
+function onChat({ fromName, text, time }) {
+  addChatMessage(fromName, text, false, time);
   els.chatWelcome.hidden = true;
   if (!els.chat.classList.contains('open')) els.chat.classList.add('open');
 }
 
-function addChatMessage(name, text, mine) {
+function addChatMessage(name, text, mine, time) {
   const div = document.createElement('div');
   div.className = 'msg' + (mine ? ' mine' : '');
+
+  const head = document.createElement('span');
+  head.className = 'msg-head';
   const nameEl = document.createElement('span');
   nameEl.className = 'name';
   nameEl.textContent = name;
+  const timeEl = document.createElement('span');
+  timeEl.className = 'time';
+  timeEl.textContent = time ? fmtTime(time) : fmtTime();
+  head.appendChild(nameEl);
+  head.appendChild(timeEl);
+
   const textEl = document.createElement('span');
   textEl.className = 'text';
   textEl.textContent = text;
-  div.appendChild(nameEl);
+
+  div.appendChild(head);
   div.appendChild(textEl);
   els.chatMessages.appendChild(div);
   els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
 }
 
+function fmtTime(t) {
+  const d = new Date(t || Date.now());
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
 function copyLink() {
-  navigator.clipboard.writeText(els.link.textContent).then(() => {
-    const prev = els.copyBtn.textContent;
+  const text = els.link.textContent;
+  const done = () => {
     els.copyBtn.textContent = 'Copied!';
-    setTimeout(() => { els.copyBtn.textContent = prev; }, 1500);
-  }).catch(() => toast('Could not copy the link.'));
+    setTimeout(() => { els.copyBtn.textContent = 'Copy link'; }, 1500);
+  };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+  } else {
+    fallbackCopy(text, done);
+  }
+}
+
+function fallbackCopy(text, done) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    done();
+  } catch (e) {
+    toast('Could not copy the link.');
+  }
+  document.body.removeChild(ta);
 }
 
 function leave() {
-  socket.disconnect();
-  tearDownPeer();
+  clearRejoin();
+  if (pc) { pc.close(); pc = null; }
+  stopScreenShare();
   if (localStream) localStream.getTracks().forEach((t) => t.stop());
   localStream = null;
-  els.call.hidden = true;
-  els.landing.hidden = false;
+  window.location.href = url.origin + url.pathname;
 }
 
 function setStatus(text) {

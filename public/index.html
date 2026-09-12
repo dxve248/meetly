@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VideoCall</title>
+  <title>Meetly</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main id="landing" class="screen center">
     <div class="card">
-      <h1>VideoCall</h1>
+      <h1>Meetly</h1>
       <p class="sub">Private 1-on-1 video calls. Create a meeting, share the link, and you're in.</p>
       <button id="create-btn" class="btn primary">Create new call</button>
       <p class="hint">Hosted sites use HTTPS automatically, which your browser requires for camera access.</p>
@@ -25,7 +25,6 @@
     </div>
   </main>
 
-  <div id="full-msg" class="toast" hidden></div>
   <div id="toast" hidden></div>
 
   <main id="call" class="screen" hidden>
@@ -39,10 +38,20 @@
       <div class="video-wrap" id="remote-wrap">
         <video id="remote-video" autoplay playsinline></video>
         <div id="remote-placeholder" class="placeholder">Waiting for the other person to join with the link&hellip;</div>
+        <div class="badges">
+          <span class="chip name" id="remote-name"></span>
+          <span class="chip warn" id="remote-mic" hidden>Muted</span>
+          <span class="chip warn" id="remote-cam" hidden>Camera off</span>
+          <span class="chip info" id="remote-screen" hidden>Sharing screen</span>
+        </div>
       </div>
       <div class="video-wrap small" id="local-wrap">
         <video id="local-video" autoplay playsinline muted></video>
-        <div id="local-placeholder" class="placeholder" hidden>Camera off</div>
+        <div id="local-placeholder" class="placeholder small" hidden>Camera off</div>
+        <div class="badges local">
+          <span class="chip name" id="local-name"></span>
+          <span class="chip info" id="local-screen" hidden>Sharing screen</span>
+        </div>
       </div>
     </section>
 
@@ -59,7 +68,7 @@
         <span>Chat</span>
         <button id="chat-close" title="Close chat">&times;</button>
       </div>
-      <div id="chat-welcome">Messages appear here once you're connected.</div>
+      <div id="chat-welcome" class="chat-welcome">Messages appear here once you're connected.</div>
       <div id="chat-messages"></div>
       <div class="chat-input-row">
         <input id="chat-input" placeholder="Message&hellip;" autocomplete="off" maxlength="1000">
