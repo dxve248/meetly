@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VideoCall</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="landing" class="screen center">
+    <div class="card">
+      <h1>VideoCall</h1>
+      <p class="sub">Private 1-on-1 video calls. Create a meeting, share the link, and you're in.</p>
+      <button id="create-btn" class="btn primary">Create new call</button>
+      <p class="hint">Hosted sites use HTTPS automatically, which your browser requires for camera access.</p>
+    </div>
+  </main>
+
+  <main id="lobby" class="screen center" hidden>
+    <div class="card">
+      <h1>Joining a call</h1>
+      <p class="sub" id="room-label"></p>
+      <input id="name-input" placeholder="Your name" maxlength="24" autocomplete="name">
+      <button id="join-btn" class="btn primary">Join call</button>
+    </div>
+  </main>
+
+  <div id="full-msg" class="toast" hidden></div>
+  <div id="toast" hidden></div>
+
+  <main id="call" class="screen" hidden>
+    <header class="topbar">
+      <a id="link" class="link" target="_blank"></a>
+      <button id="copy-btn" class="btn small">Copy link</button>
+      <span id="status"></span>
+    </header>
+
+    <section class="stage">
+      <div class="video-wrap" id="remote-wrap">
+        <video id="remote-video" autoplay playsinline></video>
+        <div id="remote-placeholder" class="placeholder">Waiting for the other person to join with the link&hellip;</div>
+      </div>
+      <div class="video-wrap small" id="local-wrap">
+        <video id="local-video" autoplay playsinline muted></video>
+        <div id="local-placeholder" class="placeholder" hidden>Camera off</div>
+      </div>
+    </section>
+
+    <footer class="controls">
+      <button id="mic-btn" class="ctrl"><span class="icon" id="mic-icon">M</span><span class="label" id="mic-label">Mute</span></button>
+      <button id="cam-btn" class="ctrl"><span class="icon" id="cam-icon">V</span><span class="label" id="cam-label">Camera</span></button>
+      <button id="screen-btn" class="ctrl"><span class="icon" id="screen-icon">S</span><span class="label" id="screen-label">Share screen</span></button>
+      <button id="chat-btn" class="ctrl"><span class="icon" id="chat-icon">C</span><span class="label" id="chat-label">Chat</span></button>
+      <button id="leave-btn" class="ctrl danger"><span class="icon" id="leave-icon">H</span><span class="label" id="leave-label">Hang up</span></button>
+    </footer>
+
+    <aside id="chat" class="chat-panel">
+      <div class="chat-head">
+        <span>Chat</span>
+        <button id="chat-close" title="Close chat">&times;</button>
+      </div>
+      <div id="chat-welcome">Messages appear here once you're connected.</div>
+      <div id="chat-messages"></div>
+      <div class="chat-input-row">
+        <input id="chat-input" placeholder="Message&hellip;" autocomplete="off" maxlength="1000">
+        <button id="chat-send">Send</button>
+      </div>
+    </aside>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>

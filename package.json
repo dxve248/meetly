@@ -1,0 +1,20 @@
+{
+  "name": "videocall",
+  "version": "1.0.0",
+  "description": "1-on-1 WebRTC video calls with shareable room links",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.3"
+  }
+}
